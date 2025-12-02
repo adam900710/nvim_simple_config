@@ -105,3 +105,213 @@ init.lua.
 And this time, NO MORE DAMN PLUGINS!! (*)
 
 (*): Except [lspconfig](https://github.com/neovim/nvim-lspconfig)
+
+# Setup
+
+Linux kernel and btrfs-progs will be the two example projects used in the setup.
+
+## Preparation for clangd
+
+Since both Linux kernel and btrfs-progs are mostly C, will use [clangd](https://github.com/clangd/clangd)
+as the LSP server.
+And `clangd` requires a `compile_commands.json` file to work.
+
+For Linux kernel, there is already a script to generate that file, but it's recommended
+to build the kernel (with your target module compiled) using LLVM first.
+If using GCC (the default) the generated file will include GCC specific flags and cause unnecessary
+warnings:
+
+```
+cd linux
+make LLVM=1 -j12
+./scripts/clang-tools/gen_compile_commands.py
+```
+
+For btrfs-progs, it's using the traditional auto-tools, one can use [bear](https://github.com/rizsotto/Bear)
+to generate the `compile_commands.json` file:
+
+```
+cd btrfs-progs
+make clean -j12
+bear -- make -j12
+```
+
+## The minimal config
+
+This tutorial is based on nvim 0.11.5, please make sure neovim 0.11.x is installed.
+One may use testing branch to get the latest neovim package on certain distros.
+
+Firstly, try nvim with all the default setting, without any plugins (by default
+nvim will try to load all vim plugins):
+
+```bash
+$ cd linux
+$ nvim -u NONE fs/btrfs/disk-io.c
+```
+
+This should result no highlight (as the default filetype based highlight is also disabled):
+
+![default](img/default_no_highlight.png)
+
+Then this is the minimal config, which includes only `clangd` as LSP server for C files only:
+
+```lua
+-- Define the LSP server for clangd
+vim.lsp.config['clangd'] = {
+  -- Command of the LSP server
+  cmd = { 'clangd' },
+
+  -- File type to trigger the lsp server
+  filetypes = { 'c' },
+
+  -- Marker files to determine the project root
+  root_markers = { 'compile_commands.json' },
+}
+
+-- Enable the clangd LSP server defined above
+vim.lsp.enable('clangd')
+```
+
+Save above file as `init.lua` and put it where you like (no need to replace the nvim's `init.lua`).
+Then load it with:
+
+```bash
+$ cd linux
+$ nvim -n init.lua
+```
+
+This will disable all plugin and read `init.lua` as the config.
+
+Then open the file `fs/btrfs/disk-io.c`, you should see the file with highlights properly enabled like this:
+
+![lsp working](img/lsp_highlight_on.png)
+
+This means the LSP server `clangd` is working properly with the `compile_commands.json`.
+
+And you can already do basic completion using `C-xC-o` keys:
+
+![basic completion](img/basic_completion.png)
+
+For more details, refer to `:help lsp-quickstart`
+## With lspconfig
+
+Neovim project itself also maintain [nvim-lspconfig](https://github.com/neovim/nvim-lspconfig) projects, which
+has very good default settings for all common lsp server.
+
+Some rolling distros have also that package too:
+- [Archlinux](https://archlinux.org/packages/extra/any/neovim-lspconfig/)
+- [OpenSUSE](https://software.opensuse.org/package/nvim-lspconfig)
+
+With that package installed, the minimal config can be even smaller, and have better default config
+(e.g. `cpp` file support)
+
+```lua
+vim.lsp.enable('clangd')
+```
+
+And even enable more languages, without bothering setting them up for each project:
+
+```lua
+vim.lsp.enable('clangd')
+
+-- For rust
+vim.lsp.enable('rust_analyzer')
+```
+
+## Enable auto-complete
+
+With above setup, it's possible to complete function name and member names, but there is no auto-completion for
+function parameters.
+This feature needs to be manually enabled through the following part in the `init.lua` file:
+
+```lua
+vim.api.nvim_create_autocmd('LspAttach', {
+  callback = function(ev)
+    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+
+	if client:supports_method('textDocument/completion') then
+      vim.lsp.completion.enable(true, client.id, ev.buf, { autotrigger = true })
+    end
+  end
+})
+```
+
+This will enable auto-completion for lsp servers that support it (clangd supports it).
+
+Now auto-completion works as expected:
+
+![autocompletion](img/autocompletion.png)
+
+The keys sequence is:
+
+```
+btrfs_root_i<C-xC-o><C-y>
+```
+
+Where `<C-y>` expands the selected item, which is `btrfs_root_id()` function,
+and now one can input to replace the parameter placeholder.
+And `<Tab>` to jump to the next jump point. In this case there is no more parameter,
+and will jump to the end of the function.
+
+For the default keymaps, refer `:help lsp-defaults` for more info.
+
+Now the minimal IDE is already finished, with just the following configs:
+
+```lua
+vim.lsp.enable('clangd')
+vim.lsp.enable('rust_analyzer')
+
+vim.api.nvim_create_autocmd('LspAttach', {
+  callback = function(ev)
+    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+
+	if client:supports_method('textDocument/completion') then
+      vim.lsp.completion.enable(true, client.id, ev.buf, { autotrigger = true })
+    end
+  end
+})
+```
+
+# More customization
+
+Personally speaking I'm pretty happy with the default LSP keymaps, but don't like to
+use `<Tab>` to move between jump points.
+
+E.g. map `<C-h>` for jump to the previous jump point and `<C-l>` for the next:
+
+```lua
+vim.keymap.set({ 'i', 's' }, '<C-l>', function()
+  if vim.snippet.active({ direction = 1 }) then
+    return '<Cmd>lua vim.snippet.jump(1)<CR>'
+  end
+end, { desc = '...', expr = true, silent = true })
+
+vim.keymap.set({ 'i', 's' }, '<C-h>', function()
+  if vim.snippet.active({ direction = -1 }) then
+    return '<Cmd>lua vim.snippet.jump(-1)<CR>'
+  end
+end, { desc = '...', expr = true, silent = true })
+
+```
+
+Refer to `:help vim.snippet` for the jump related key mapping examples.
+
+And the default `completeopt` will always pre-select the first time, one can change it to only
+do the longest match:
+
+```lua
+vim.opt.completeopt = "menu,popup,longest"
+```
+
+# Final cleanup
+
+So far we are testing the minimal config using `nvim -u <file>` option, which disables all plugins.
+
+Now it's time to cleanup any plugins that can be replaced by the minimal setup, but you still
+want to use, e.g. colorscheme, git integration etc.
+
+And one may also want to cleanup `~/.local/state/nvim` and `~/.local/share/nvim` directories.
+
+After that you can replace the nvim's `init.lua` with the minimal ones.
+
+Enjoy a minimal but still working neovim setup.
