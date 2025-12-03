@@ -296,11 +296,13 @@ end, { desc = '...', expr = true, silent = true })
 
 Refer to `:help vim.snippet` for the jump related key mapping examples.
 
-And the default `completeopt` will always pre-select the first time, one can change it to only
-do the longest match:
+And the default `completeopt` will always pre-select the first time, and won't show up the menu
+if there is only one matching item.
+I prefer the popup menu always show up even if there is only one item, and only pre-select
+the longest matchine text:
 
 ```lua
-vim.opt.completeopt = "menu,popup,longest"
+vim.opt.completeopt = "menuone,popup,longest"
 ```
 
 # Final cleanup
@@ -330,6 +332,10 @@ There are some vim plugins installed, which are all provided by the Archlinux of
 
 ```lua
 -- LSP
+vim.lsp.config.clangd = {
+  -- Add clangd option to disable automatical header insertion
+  cmd = { 'clangd', '--header-insertion=never' },
+}
 vim.lsp.enable('clangd')
 vim.lsp.enable('rust_analyzer')
 
@@ -370,7 +376,6 @@ vim.api.nvim_create_autocmd("BufReadPost", {
     pcall(vim.api.nvim_win_set_cursor, winid, position)
   end,
 })
-
 -- Colorscheme
 vim.cmd.colorscheme('molokai')
 vim.cmd.highlight('Normal guibg=NONE')
@@ -385,5 +390,6 @@ vim.opt.autoread = true
 vim.opt.autowrite = true
 vim.opt.wildmode = "longest,list,full"
 vim.opt.number = true
-vim.opt.completeopt = "menu,popup,longest"
+vim.opt.completeopt = "menuone,popup,longest"
+vim.opt.winborder = "rounded"
 ```
