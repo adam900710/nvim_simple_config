@@ -315,3 +315,75 @@ And one may also want to cleanup `~/.local/state/nvim` and `~/.local/share/nvim`
 After that you can replace the nvim's `init.lua` with the minimal ones.
 
 Enjoy a minimal but still working neovim setup.
+
+# My personal setup
+
+Here is the personal setup I'm using, replacing 95% of my previous [nvim-cmp](https://github.com/hrsh7th/nvim-cmp) setup.
+
+There are some vim plugins installed, which are all provided by the Archlinux official repo:
+
+- neovim-lspconfig
+- vim-airline
+- vim-airline-themes
+- vim-fugitive
+- vim-molokai
+
+```lua
+-- LSP
+vim.lsp.enable('clangd')
+vim.lsp.enable('rust_analyzer')
+
+vim.api.nvim_create_autocmd('LspAttach', {
+  callback = function(ev)
+    local client = vim.lsp.get_client_by_id(ev.data.client_id)
+
+    if client:supports_method('textDocument/completion') then
+      vim.lsp.completion.enable(true, client.id, ev.buf, { autotrigger = true })
+    end
+  end
+})
+
+
+vim.keymap.set({ 'i', 's' }, '<C-l>', function()
+  if vim.snippet.active({ direction = 1 }) then
+    return '<Cmd>lua vim.snippet.jump(1)<CR>'
+  end
+end, { desc = '...', expr = true, silent = true })
+
+vim.keymap.set({ 'i', 's' }, '<C-h>', function()
+  if vim.snippet.active({ direction = -1 }) then
+    return '<Cmd>lua vim.snippet.jump(-1)<CR>'
+  end
+end, { desc = '...', expr = true, silent = true })
+
+-- LSP folding
+vim.o.foldmethod = "expr"
+vim.o.foldexpr = "v:lua.vim.lsp.foldexpr()"
+
+-- Auto-restore
+vim.api.nvim_create_autocmd("BufReadPost", {
+  desc = "Auto jump to last position",
+  group = vim.api.nvim_create_augroup("auto-last-position", { clear = true }),
+  callback = function(args)
+    local position = vim.api.nvim_buf_get_mark(args.buf, [["]])
+    local winid = vim.fn.bufwinid(args.buf)
+    pcall(vim.api.nvim_win_set_cursor, winid, position)
+  end,
+})
+
+-- Colorscheme
+vim.cmd.colorscheme('molokai')
+vim.cmd.highlight('Normal guibg=NONE')
+vim.cmd.highlight('NonText guibg=NONE')
+vim.cmd.highlight('Comment guifg=#808080')
+
+-- Basic config
+vim.opt.fileencodings = "utf-8,cp932,cp936"
+vim.opt.bk = false
+vim.opt.swapfile = false
+vim.opt.autoread = true
+vim.opt.autowrite = true
+vim.opt.wildmode = "longest,list,full"
+vim.opt.number = true
+vim.opt.completeopt = "menu,popup,longest"
+```
